@@ -80,7 +80,7 @@ class HornetqClient implements IStompClient
 
     public function ack($messageId, array $headers = array())
     {
-        return $this->stomp->ack($messageId, $headers);
+        $this->stomp->ack($messageId, $headers);
     }
 
     public function adaptMessage(Message $message, $command = 'SEND')

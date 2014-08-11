@@ -12,6 +12,12 @@ use Vda\Messaging\Subscription;
  */
 class PeclStompClient implements IStompClient
 {
+    const ERROR_UNEXPECTED_EOF = 1; // kick out from server (timeout)
+
+    private static $errorCodes = array(
+        'Unexpected EOF while reading from socket' => self::ERROR_UNEXPECTED_EOF,
+    );
+
     private static $ackModes = array(
         Subscription::ACK_AUTO => 'auto',
         Subscription::ACK_INDIVIDUAL => 'client-individual',
@@ -129,7 +135,7 @@ class PeclStompClient implements IStompClient
         try {
             $f = $this->stomp->readFrame();
         } catch (\StompException $e) {
-            throw new MessagingException('Unable to read message', 0, $e);
+            throw new MessagingException('Unable to read message', $this->getErrorCode($e), $e);
         }
 
         $result = null;
@@ -145,7 +151,11 @@ class PeclStompClient implements IStompClient
     {
         $this->assertIsConnected();
 
-        return $this->stomp->ack($messageId, $headers);
+        if (!$this->stomp->ack($messageId, $headers)) {
+            $error = $this->stomp->error();
+            $this->stomp->disconnect();
+            throw new MessagingException('Unable to send ack. ' . $error);
+        }
     }
 
     public function adaptMessage(Message $message, $command = 'SEND')
@@ -215,5 +225,10 @@ class PeclStompClient implements IStompClient
         if (!$this->isConnected()) {
             throw new MessagingException("Stomp client is not connected");
         }
+    }
+
+    private function getErrorCode(\StompException $ex)
+    {
+        return isset(self::$errorCodes[$ex->getMessage()]) ? self::$errorCodes[$ex->getMessage()] : 0;
     }
 }

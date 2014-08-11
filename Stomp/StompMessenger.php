@@ -17,6 +17,15 @@ class StompMessenger implements IMessenger
     private $lastActivityTime;
     private $checkForTimeoutInterval = 30;
 
+    /**
+     * in fact hornetq default connection ttl is 60 seconds,
+     * http://docs.jboss.org/hornetq/2.4.0.Final/docs/user-manual/html/connection-ttl.html
+     * but to be sure use 5 seconds gap
+     *
+     * @var int
+     */
+    private $serverTimeout = 55;
+
     public function __construct(IStompClient $stomp)
     {
         $this->stomp = $stomp;
@@ -73,12 +82,23 @@ class StompMessenger implements IMessenger
 
     public function receive($timeout = -1)
     {
+        // NOTE: there are no incoming TCP packages on receive, so we can't update lastActivityTime here.
         $this->ensureConnected();
 
-        $this->stomp->setReadTimeout($timeout);
-
+        $m = null;
         try {
-            $m = $this->stomp->readMessage();
+            while (true) {
+                list($chunk, $timeout) = $this->chunkTimeout($timeout);
+                if ($chunk === false) {
+                    $m = null;
+                    break;
+                }
+                $this->stomp->setReadTimeout($chunk);
+                $m = $this->stomp->readMessage();
+                if ($m) {
+                    break;
+                }
+            }
         } catch (MessagingException $e) {
             $this->stomp->disconnect();
             throw $e;
@@ -122,5 +142,28 @@ class StompMessenger implements IMessenger
     private function setLastActivityTime()
     {
         $this->lastActivityTime = time();
+    }
+
+    private function chunkTimeout($timeout)
+    {
+        if ($timeout === false) {
+            return array(false, false);
+        }
+
+        $timeToKickOut = $this->lastActivityTime + $this->serverTimeout - time();
+        if ($timeToKickOut <= 0) {
+            $this->stomp->disconnect();
+            $this->ensureConnected();
+            $timeToKickOut = $this->lastActivityTime + $this->serverTimeout - time();
+        }
+
+        if ($timeout == -1) {
+            $res = array($timeToKickOut, -1);
+        } elseif ($timeout <= $timeToKickOut) {
+            $res = array($timeout, false);
+        } else {
+            $res = array($timeToKickOut, $timeout - $timeToKickOut);
+        }
+        return $res;
     }
 }
