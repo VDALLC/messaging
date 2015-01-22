@@ -11,9 +11,8 @@
         "ext-Stomp": "C implementation of STOMP (>=1.0.5)"
     },
     "autoload": {
-        "psr-0": { "": "" }
+        "psr-4": { "Vda\\Messaging\\": "src/" }
     },
-    "target-dir": "Vda/Messaging",
     "minimum-stability": "dev",
     "extra": {
         "branch-alias": {
